@@ -53,7 +53,7 @@ class MiGPT:
 
         self.whoami = "翻译官" # 当前工作 mode: 小爱机器人 / 翻译官
 
-    def set_actor(actor:str):
+    def set_actor(self, actor:str):
         self.whoami = actor
 
     async def close(self):
@@ -77,7 +77,7 @@ class MiGPT:
                     and new_record
                     and self.need_ask_gpt(new_record)
                 ):
-                    await self.stop_if_xiaoai_is_playing()
+                    await self.force_stop_xiaoai()
                 if (d := time.perf_counter() - start) < 1:
                     # sleep to avoid too many request
                     self.log.debug("Sleep %f, timestamp: %s", d, self.last_timestamp)
@@ -339,6 +339,10 @@ class MiGPT:
             # stop it
             await self.mina_service.player_pause(self.device_id)
 
+    async def force_stop_xiaoai(self):
+        # stop it
+        await self.mina_service.player_pause(self.device_id)
+
     async def wakeup_xiaoai(self):
         return await miio_command(
             self.miio_service,
@@ -364,13 +368,13 @@ class MiGPT:
                     print("开始对话")
                     self.in_conversation = True
                     await self.wakeup_xiaoai()
-                await self.stop_if_xiaoai_is_playing()
+                await self.force_stop_xiaoai()
                 continue
             elif query == self.config.end_conversation:
                 if self.in_conversation:
                     print("结束对话")
                     self.in_conversation = False
-                await self.stop_if_xiaoai_is_playing()
+                await self.force_stop_xiaoai()
                 continue
 
             # we can change prompt
@@ -387,18 +391,18 @@ class MiGPT:
             if WAKEUP_KEYWORD in query:
                 continue
 
-            if "变身" in query:
-                await self.stop_if_xiaoai_is_playing()
+            if "呼叫" in query:
+                await self.force_stop_xiaoai()
                 if "翻译官" in query:
                     self.set_actor("翻译官")
                 elif "机器人" in query:
                     self.set_actor("小爱机器人")
-                await self.do_tts(f"呼哈，我现在是{self.whoami}")
+                await self.do_tts(f"~嘿哈~，我现在是{self.whoami}")
                 continue
 
             print("query: {}".format(query))
             if self.whoami == "翻译官":
-                await self.stop_if_xiaoai_is_playing()
+                await self.force_stop_xiaoai()
                 translator = AlibabaMachineTranslator(
                     self.config.ali_translate_options["access_id"],
                     self.config.ali_translate_options["access_secret_key"],
@@ -423,7 +427,7 @@ class MiGPT:
             # some model can not detect the language code, so we need to add it
 
             if self.config.mute_xiaoai:
-                await self.stop_if_xiaoai_is_playing()
+                await self.force_stop_xiaoai()
             else:
                 # waiting for xiaoai speaker done
                 await asyncio.sleep(8)
