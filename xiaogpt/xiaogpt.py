@@ -25,6 +25,7 @@ from xiaogpt.config import (
 )
 from xiaogpt.tts import TTS, MiTTS, TetosTTS
 from xiaogpt.utils import detect_language, parse_cookie_string
+from xiaogpt.translate.ali_translate import AlibabaMachineTranslator
 
 EOF = object()
 
@@ -49,6 +50,11 @@ class MiGPT:
         self.log.addHandler(RichHandler())
         self.log.debug(config)
         self.mi_session = ClientSession()
+
+        self.whoami = "翻译官" # 当前工作 mode: 小爱机器人 / 翻译官
+
+    def set_actor(actor:str):
+        self.whoami = actor
 
     async def close(self):
         await self.mi_session.close()
@@ -372,12 +378,40 @@ class MiGPT:
                 print(new_record)
                 self._change_prompt(new_record.get("query", ""))
 
-            if not self.need_ask_gpt(new_record):
-                self.log.debug("No new xiao ai record")
-                continue
+            # if not self.need_ask_gpt(new_record):
+            #     self.log.debug("No new xiao ai record")
+            #     continue
 
             # drop key words
             query = re.sub(rf"^({'|'.join(self.config.keyword)})", "", query)
+            if WAKEUP_KEYWORD in query:
+                continue
+
+            if "变身" in query:
+                await self.stop_if_xiaoai_is_playing()
+                if "翻译官" in query:
+                    self.set_actor("翻译官")
+                elif "机器人" in query:
+                    self.set_actor("小爱机器人")
+                await self.do_tts(f"呼哈，我现在是{self.whoami}")
+                continue
+
+            print("query: {}".format(query))
+            if self.whoami == "翻译官":
+                await self.stop_if_xiaoai_is_playing()
+                translator = AlibabaMachineTranslator(
+                    self.config.ali_translate_options["access_id"],
+                    self.config.ali_translate_options["access_secret_key"],
+                    self.config.ali_translate_options["region"])
+                await self.speak(translator.chinese_to_english_async(query), "en")
+                await self.wakeup_xiaoai()
+                continue
+            elif self.whoami == "小爱机器人":
+                # waiting for xiaoai speaker done
+                await asyncio.sleep(8)
+                await self.wakeup_xiaoai()
+                continue
+
             # llama3 is not good at Chinese, so we need to add prompt in it.
             if self.config.bot == "llama":
                 query = f"你是一个基于llama3 的智能助手，请你跟我对话时，一定使用中文，不要夹杂一些英文单词，甚至英语短语也不能随意使用，但类似于 llama3 这样的专属名词除外, 问题是：{query}"
@@ -393,6 +427,7 @@ class MiGPT:
             else:
                 # waiting for xiaoai speaker done
                 await asyncio.sleep(8)
+
             await self.do_tts(f"正在问{self.chatbot.name}请耐心等待")
             try:
                 print(
@@ -412,12 +447,16 @@ class MiGPT:
                 print(f"继续对话, 或用`{self.config.end_conversation}`结束对话")
                 await self.wakeup_xiaoai()
 
-    async def speak(self, text_stream: AsyncIterator[str]) -> None:
+    async def speak(self, text_stream: AsyncIterator[str], lang:str="") -> None:
         first_chunk = await text_stream.__anext__()
         # Detect the language from the first chunk
         # Add suffix '-' because tetos expects it to exist when selecting voices
         # however, the nation code is never used.
-        lang = detect_language(first_chunk) + "-"
+        if not lang:
+            # deletec_language 耗时比较长
+            lang = detect_language(first_chunk) + "-"
+        elif not lang.endswith('-'):
+            lang = lang + "-"
 
         async def gen():  # reconstruct the generator
             yield first_chunk

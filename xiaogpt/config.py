@@ -87,6 +87,9 @@ class Config:
     tts_options: dict[str, Any] = field(default_factory=dict)
     gpt_options: dict[str, Any] = field(default_factory=dict)
 
+    ali_translate_options: dict[str, str] = field(default_factory=dict)
+    # {"access_id":"", "access_secret_key":"", "region":""}
+
     def __post_init__(self) -> None:
         if self.proxy:
             validate_proxy(self.proxy)
