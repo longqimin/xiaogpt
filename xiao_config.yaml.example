@@ -92,3 +92,5 @@ volc_secret_key: ""
 tts: mi
 # TTS 参数字典，参考 https://github.com/frostming/tetos 获取可用参数
 tts_options: {}
+
+ali_translate_options: {"access_id":"", "access_secret_key":"", "region":""}
