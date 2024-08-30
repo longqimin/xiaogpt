@@ -1,3 +1,6 @@
 [submodule "ecdict"]
 	path = ecdict
 	url = https://github.com/skywind3000/ECDICT.git
+[submodule "xinhua"]
+	path = xinhua
+	url = https://github.com/pwxcoo/chinese-xinhua.git

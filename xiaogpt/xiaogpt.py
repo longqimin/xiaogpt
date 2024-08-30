@@ -9,6 +9,7 @@ import re
 import time
 from pathlib import Path
 from typing import AsyncIterator
+from typing import List
 
 from aiohttp import ClientSession, ClientTimeout
 from miservice import MiAccount, MiIOService, MiNAService, miio_command
@@ -28,6 +29,16 @@ from xiaogpt.utils import detect_language, parse_cookie_string
 from xiaogpt.translate.ali_translate import AlibabaMachineTranslator
 
 EOF = object()
+
+
+def str_contains(text: str, word: str):
+    return word in text
+
+def str_contains_any(text: str, words: List[str]):
+    return any([str_contains(text, word) for word in words])
+
+def str_contains_all(text: str, words: List[str]):
+    return all([str_contains(text, word) for word in words])
 
 
 class MiGPT:
@@ -51,10 +62,11 @@ class MiGPT:
         self.log.debug(config)
         self.mi_session = ClientSession()
 
-        self.whoami = "翻译官" # 当前工作 mode: 小爱机器人 / 翻译官
+        self.mode = "翻译中文" # 当前工作 mode: 小爱机器人 / 翻译中文
 
-    def set_actor(self, actor:str):
-        self.whoami = actor
+    async def set_mode(self, actor:str):
+        self.mode = actor
+        await self.do_tts(f"~哒哒~，我现在是 {self.mode}")
 
     async def close(self):
         await self.mi_session.close()
@@ -350,6 +362,15 @@ class MiGPT:
             f"{self.config.wakeup_command} {WAKEUP_KEYWORD} 0",
         )
 
+    async def help(self):
+        manual = [
+            "翻译中文",
+            "翻译英文",
+            "成语接龙",
+        ]
+        await self.do_tts(f"我可以 {','.join(manual)}, 你想要我做什么呢？")
+
+
     async def run_forever(self):
         await self.init_all_data()
         task = asyncio.create_task(self.poll_latest_ask())
@@ -391,17 +412,26 @@ class MiGPT:
             if WAKEUP_KEYWORD in query:
                 continue
 
-            if "呼叫" in query:
+            if str_contains_any(query, ['自我', '自己']) and str_contains(query, '介绍'):
+                self.help()
+                await self.wakeup_xiaoai()
+                continue
+            elif "我要" in query:
                 await self.force_stop_xiaoai()
-                if "翻译官" in query:
-                    self.set_actor("翻译官")
-                elif "机器人" in query:
-                    self.set_actor("小爱机器人")
-                await self.do_tts(f"~嘿哈~，我现在是{self.whoami}")
+                if "翻译中文" in query:
+                    await self.set_mode("翻译中文")
+                elif "翻译英文" in query:
+                    await self.set_mode("翻译英文")
+                elif "成语接龙" in query:
+                    await self.set_mode("成语接龙")
+                else:
+                    await self.do_tts(f"抱歉，我现在没有 {query} 这个功能")
+                    await self.help()
                 continue
 
+
             print("query: {}".format(query))
-            if self.whoami == "翻译官":
+            if self.mode == "翻译中文":
                 await self.force_stop_xiaoai()
                 translator = AlibabaMachineTranslator(
                     self.config.ali_translate_options["access_id"],
@@ -410,7 +440,16 @@ class MiGPT:
                 await self.speak(translator.chinese_to_english_async(query), "en")
                 await self.wakeup_xiaoai()
                 continue
-            elif self.whoami == "小爱机器人":
+            elif self.mode == "翻译英文":
+                await self.force_stop_xiaoai()
+                translator = AlibabaMachineTranslator(
+                    self.config.ali_translate_options["access_id"],
+                    self.config.ali_translate_options["access_secret_key"],
+                    self.config.ali_translate_options["region"])
+                await self.speak(translator.english_to_chinese_async(query), "zh")
+                await self.wakeup_xiaoai()
+                continue
+            elif self.mode == "小爱机器人":
                 # waiting for xiaoai speaker done
                 await asyncio.sleep(8)
                 await self.wakeup_xiaoai()

@@ -60,6 +60,15 @@ class AlibabaMachineTranslator:
         else:
             yield str(message)
         return
+    
+    async def english_to_chinese_async(self, text: str) -> AsyncIterator[str]:
+        code, message = self.english_to_chinese(text)
+        print("{} english={}, chinese:{}, code={}".format(time.time(), text, message, code))
+        if code != '200':
+            yield "翻译错误"
+        else:
+            yield str(message)
+        return
 
 
 
